@@ -1,3 +1,7 @@
+"""
+Defines the dataset classes used to store data
+"""
+
 import random
 import torch
 import torch.utils.data as data
