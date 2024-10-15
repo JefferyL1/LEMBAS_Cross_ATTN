@@ -1,9 +1,8 @@
 # Utilizing Cross-Attention with LEMBAS to determine off-target effects of drugs
 
 Here we implement the idea of cross-attention into LEMBAS - a biologically constrained neural network representing the interceullar signaling pathways - to determine the off-target effects of drugs. 
-This work is largely built on previous work from the Lauffenburger Lab, specifically the LEMBAS network [^1] and the applications of LEMBAS to off-target effects of drugs[^2].
-
-
+This work is largely built on previous work from the Lauffenburger Lab, specifically the LEMBAS network [<sup>[1]</sup>](https://github.com/Lauffenburger-Lab/LEMBAS) and the applications of LEMBAS to off-target effects of drugs [<sup>[2]</sup>](https://github.com/Lauffenburger-Lab/DrugsANNSignaling). Taking inspiration from NLP and the impact of self-attention, we are applying cross-attention in the problem of predicting binding between drugs and proteins. In NLP, self-attention allows the introduction of context in which the neural network can pay attention to specific parts of the sentence important for next-token prediction. A similar idea applies here between the drug and specific protein of choice. When binding to a protein, a molecule specifically binds to the active site of that protein. Thus, the idea of cross-attention is to attend to specific amino acids of that protein based on the drug's feature vector. Through this method, we hope to gain a more information-rich representation of binding to use within off-target identification. 
+  
 ## References
 1. Nilsson, A., Peters, J. M., Meimetis, N., Bryson, B. & Lauffenburger, D. A. Artificial neural networks enable genome-scale simulations of intracellular signaling. Nature Communications 13, (2022). Github: https://github.com/Lauffenburger-Lab/LEMBAS
 2. Meimetis, N., Lauffenburger, D. A. & Nilsson, A. Inference of drug off-target effects on cellular signaling using interactome-based deep learning. iScience 27, (2024). Github: https://github.com/Lauffenburger-Lab/DrugsANNSignaling
