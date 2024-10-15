@@ -153,11 +153,14 @@ class TF_Data(data.Dataset):
         self.output = random.shuffle(self.output)
 
 
+# building the cross-attention network 
 class SingleAttentionHead(nn.Module):
 
     """ Builds an attention head that uses tensor contraction as the multiplication. See forward for more details. """
+    
     def __init__(self, embedding_dimension, key_query_dim, value_output_dim, device, attn_dropout = 0.0):
-        """ Initializes a linear layer matrix of specific size with normally distributed values for the query, key, and value matrix. """
+        """ Initializes linear layer matrices of specific size respresenting the key, query, and value matrices. """
+        
         super().__init__()
         self.device = device
         self.in_dim = embedding_dimension
@@ -175,7 +178,8 @@ class SingleAttentionHead(nn.Module):
 
     def forward(self, queries, keys, values, mask = None):
 
-        """ Creates the context matrix using tensor contraction. """
+        """ Creates the context matrix using tensor contraction. Queries, keys, and values represent the object that from the query, key, and value. 
+        For example, our case would involve using the drug embeddings as queries and the protein 3D tesnor as key/value. """
 
         # calculating the query, key, and value tensors
         q = self.W_query(queries) # [batch, 64]
@@ -190,32 +194,41 @@ class SingleAttentionHead(nn.Module):
         q_repeated = q_repeated.expand(n, -1, -1)
 
             # bmm calculation (every matrix of q x every matrix of k along the num proteins dimension)
-        attn = torch.bmm(q_repeated, k.transpose(1, 2)) #[num proteins, batch, L]
+        attn = torch.bmm(q_repeated, k.transpose(1, 2)) # returns [num proteins, batch, L]
 
             # dividing by the square root of key dimension
         attn /= np.sqrt(k.shape[-1])
 
-            # softmaxing over the L dimension
+            # softmaxing over the L dimension - we want to pay attention along the amino acid dimension
         attn = torch.softmax(attn, dim = -1)
         attn = self.attn_dropout(attn)
 
-        # calculating the context vector: for every drug/batch, for every protein, multiply the 1 x L vector by the
+        # calculating the context vector: for every drug/batch sample, for every protein, multiply the 1 x L vector by the
         # corresponding protein matrix to get a context 1 x 64 vector representing the binding of the drug to that specific protein
         num = attn.size()[0]
         batch = attn.size()[1]
         length = attn.size()[2]
 
         result = torch.empty(batch, num, 64, device=self.device)
+        
         for i in range(batch):
+
+            # getting specific attention matrix for that drug to all proteins 
             drug_context_matrix = attn[:, i, :]
+
+            # batch matrix multiply the attention vector to L x 64 protein value matrix 
             context = torch.bmm(drug_context_matrix.unsqueeze(dim = 1), v)
+            
             result[i, :, :] = context.squeeze(dim = 1)
 
         return result
 
 class TrainableLogistic(nn.Module):
     """ Builds a trainable generalized logistic function that determines the scaling of the dose on the drug pertubation effect before the LEMBAS module. """
+    
     def __init__(self):
+        """ Initializes instance of Trainable Logistic with trainable parameters """
+        
         super(TrainableLogistic, self).__init__()
 
         self.A = nn.Parameter(torch.tensor(0.0))
@@ -225,38 +238,53 @@ class TrainableLogistic(nn.Module):
         self.B = nn.Parameter(torch.tensor(1.0))
 
     def forward(self, x):
+        """ Applies TrainableLogistic function """
+        
         return self.A + ((self.K - self.A) / (self.C + self.Q * torch.exp(-1 * self.B * x)))
 
 class DrugAttnModule(nn.Module):
 
-    """ Given a single drug as an ECFP4 fingerprint, returns a ligand-like output representing the drugs impact on each protein of the
+    """ Given a single drug as an ECFP4 fingerprint, returns a ligand-like output representing the drugs binding / interaction on each protein of the
     protein space """
 
     def __init__(self, embedding_dim, key_query_value_dim, layers_to_output, protein_names, protein_file, known_targets_file, ecfp4, dtype = torch.float32, device = 'cuda'):
-        """ Requires an embedding dimension, key_query_value dimension, and list of layers to output for the model. Protein names -- a dataframe containing
-        the targets that we want to mimic binding to -- along with the protein file containing embeddings via a dictionary lookup is required. The known_targets_file
-        that contains drugs as column 1 and other columns as proteins where a 1 represents known drug activity to that protein. ECFP4 is a dictionary that contains drug SMILES to
-        a 1d numpy array of the fingerprint. """
+        """ 
+        
+        Initializes an instance of this neural network module.
+
+        Requires the following:
+        - embedding dimension: size of embeddings (must be the same for the drug and for the protein)
+        - key_query_value_dimension: size of intermediate vectors after attention module
+        - layers to output: list representing linear layer size when going from context to single binding, must follow form [key_query_value_dimension, ... , 1]
+        - protein_names: dataframe containing all of the proteins in our protein space
+        - protein file: h5py file containing embeddings via dictionary lookup of UNIPROT ID 
+        - known_targets_file: dataframe with drugs as column 1 and other columns as proteins where a 1 represents known drug activity to that protein
+        - ecfp4: h5py file containing 1d numpy array of drug fingerprints via dictionary lookup from drug SMILES
+        
+        """
         super().__init__()
 
+        # sets device, dtype, and cross_attn module 
         self.dtype = dtype
         self.device = torch.device(device)
         self.cross_attn = SingleAttentionHead(embedding_dim, key_query_value_dim, key_query_value_dim, self.device, attn_dropout=0.1)
 
+        # builds linear layers from context vector to binidng scalar 
         self.layers = torch.nn.ModuleList()
         for i in range(0, len(layers_to_output) -1):
             self.layers.append(torch.nn.Linear(layers_to_output[i], layers_to_output[i + 1], bias=True))
 
+        # defining aspects of model 
         self.layer_dim = layers_to_output
         self.act_fn = nn.Tanh()
         self.dropout = torch.nn.Dropout(0.20)
         self.trainable_dose = TrainableLogistic()
 
-        # making protein object
+        # making 3D protein tensor 
         self.n = len(protein_names)
         self.protein, self.protein_ind_dict = self.create_protein_reference(protein_names, protein_file)
 
-        # make ECFP4 to mask dictionary
+        # masking for known targets 
         melted_targets = pd.melt(known_targets_file, id_vars = 'drug', var_name='protein', value_name='activity')
         melted_targets = melted_targets[melted_targets['activity'] == 1]
         targets_dictionary = melted_targets.groupby('drug')['protein'].apply(list).to_dict()
@@ -264,13 +292,16 @@ class DrugAttnModule(nn.Module):
         self.mask_dict = self.make_target_masks(self.known_targets)
 
     def create_protein_reference(self, protein_names, protein_file):
-        """ Creates the 3d tensor of proteins to find 'binding' to. Returns this along with dictionary of protein name to index"""
+        """ Creates the 3d tensor of proteins to find 'binding' to. Returns this along with dictionary of protein name to index in 3d tensor. """
+        
         protein_embeds = []
         ind_prot_dict = {}
 
         for ind, protein in enumerate(protein_names):
             protein_embeds.append(torch.from_numpy(protein_file[protein][:]))
             ind_prot_dict[protein] = ind
+
+        # pads all proteins to maximum length to ensure rectangular tensor 
         protein_object = torch.nn.utils.rnn.pad_sequence(protein_embeds, batch_first = True, padding_value = 0)
         protein_object = protein_object.to(device = self.device, dtype= self.dtype)
 
@@ -316,6 +347,7 @@ class DrugAttnModule(nn.Module):
     def make_target_masks(self, known_targets):
         """ Given a dictionary of known_targets which contains drug ECFP4 tuples to a list/set of their protein targets by Uniprot ID,
         returns a dictionary of tensor masks for every drug. """
+        
         output_dict = {}
         for drug, targets in known_targets.items():
             target_ind = [self.protein_ind_dict[target] for target in targets]
