@@ -17,7 +17,8 @@ import plotting, io
 
 
 def test_model(model, test_dataloader, hyper_params, split = 'test'):
-
+    """ Tests the models on test dataset and stores outputs. """
+    
     device = model.device
     dtype = model.dtype
 
@@ -36,7 +37,7 @@ def test_model(model, test_dataloader, hyper_params, split = 'test'):
 
             # calculating loss
             mse_loss = loss(TF_output, Yhat)
-            masked_loss = model.drug_layer.get_batched_mask_loss(drug, X_in, hyper_params['off_target_lambda'])
+            masked_loss = model.drug_layer.get_batched_mask_loss(drug, X_in, hyper_params['off_target_lambda']) # gets the off-target loss
 
             # calculating correlation
             tot_correlation = torch.corrcoef(torch.stack([Yhat.view(-1), TF_output.view(-1)]))[0, 1]
@@ -49,7 +50,8 @@ def test_model(model, test_dataloader, hyper_params, split = 'test'):
         return {'correlation': tot_correlation, 'per_TF_corr': per_TF_corr, 'loss': mse_loss, 'masked_loss': masked_loss}
 
 def train_model(model, dataset, cell_line, hyper_params, verbose = True, reset_epoch = 200, ):
-
+    """ Trains model on training dataset """
+    
     device = model.device
     dtype = model.dtype
 
@@ -71,7 +73,7 @@ def train_model(model, dataset, cell_line, hyper_params, verbose = True, reset_e
     train_data = dataset.create_sub_dataset(training_indices)
     train_loader = DataLoader(dataset = train_data, batch_size = hyper_params['batch_size'], shuffle = True)
 
-    # of testing split
+    # datset of testing split
     testing_indices = dataset.get_cell_line_w_split_indices(cell_line, 'test')
     test_data = dataset.create_sub_dataset(testing_indices)
     test_loader = DataLoader(dataset = test_data, batch_size=len(test_data), shuffle=True)
@@ -87,7 +89,6 @@ def train_model(model, dataset, cell_line, hyper_params, verbose = True, reset_e
         cur_loss = []
         cur_eig = []
         cur_corr = []
-
 
         for drug, dose, TF_output in train_loader:
             model.train()
@@ -117,7 +118,7 @@ def train_model(model, dataset, cell_line, hyper_params, verbose = True, reset_e
             param_reg = model.L2_reg(hyper_params['param_lambda_L2']) # all model weights and signaling network biases
             total_loss = fit_loss + masked_loss + sign_reg + ligand_reg + param_reg + stability_loss + uniform_reg
 
-            correlation = torch.corrcoef(torch.stack([Yhat.view(-1), TF_output.view(-1)]))[0, 1]
+            correlation = torch.corrcoef(torch.stack([Yhat.view(-1), TF_output.view(-1)]))[0, 1] # getting total correlation per TF
 
             # backpropagation and optimizing
             total_loss.backward()
@@ -131,14 +132,17 @@ def train_model(model, dataset, cell_line, hyper_params, verbose = True, reset_e
         stats = utils.update_progress(stats, iter = e, loss = cur_loss, eig = cur_eig, corr = cur_corr, learning_rate = cur_lr,
                                      n_sign_mismatches = model.signaling_network.count_sign_mismatch())
 
+        # every 10 iterations, run test model and store results 
         if e % 10 == 0 or e == hyper_params['max_iter'] - 1:
             result_dict = test_model(model, test_loader, hyper_params)
             stats = utils.update_test_progress(stats, iter = e, loss = result_dict['loss'], corr = result_dict['correlation'],
                                               per_TF_corr = result_dict['per_TF_corr'])
 
+        # print stats every 250 iterations
         if verbose and e % 250 == 0:
             utils.print_stats(stats, iter = e)
 
+        # reset optimizer
         if np.logical_and(e % reset_epoch == 0, e > 0):
             optimizer.state = reset_state.copy()
 
