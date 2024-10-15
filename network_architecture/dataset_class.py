@@ -1,3 +1,8 @@
+import random
+import torch
+import torch.utils.data as data
+
+
 # building the dataset structure for training 
 
 class small_dataset(data.Dataset):
