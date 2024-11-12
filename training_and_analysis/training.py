@@ -193,15 +193,15 @@ def run_model(cell_line, output_directory_path):
     projection_amplitude_in = 3
     projection_amplitude_out = 1.2
     
-    # bionet parameters
-    bionet_params = {'target_steps': 100, 'max_steps': 150, 'exp_factor':50, 'tolerance': 1e-5, 'leak':1e-2} # fed directly to model
+    # bionet parameters (reduce max_steps to 110 or even 100)
+    bionet_params = {'target_steps': 100, 'max_steps': 110, 'exp_factor':50, 'tolerance': 1e-5, 'leak':1e-2} # fed directly to model
     
     # cross_attn parameters
     crossattn_params = {'embedding_dim':1024, 'kqv_dim': 64, 'layers_to_output': [64, 16, 4, 1]} # create drug module for model
     
-    # training parameters
+    # training parameters (reduced learning rate)
     lr_params = {'max_iter': 5000,
-                'learning_rate': 2e-3}
+                'learning_rate': 1e-4}
     other_params = {'batch_size': 8, 'noise_level': 10, 'gradient_noise_level': 1e-9}
     regularization_params = {'param_lambda_L2': 1e-6, 'moa_lambda_L1': 0.1, 'ligand_lambda_L2': 1e-5, 'uniform_lambda_L2': 1e-4,
                     'uniform_max': 1/projection_amplitude_out, 'spectral_loss_factor': 1e-5, 'off_target_lambda': 0.01}
