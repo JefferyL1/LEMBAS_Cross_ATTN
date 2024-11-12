@@ -16,6 +16,6 @@
 
 conda activate ml_env
 
-python 
+python /nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/code/training.py
 
 
