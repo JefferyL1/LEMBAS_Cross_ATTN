@@ -16,6 +16,7 @@ import utilities as utils
 import plotting, io
 
 import time
+import pickle
 
 def test_model(model, test_dataloader, hyper_params, split = 'test'):
     """ Tests the models on test dataset and stores outputs. """
@@ -50,7 +51,7 @@ def test_model(model, test_dataloader, hyper_params, split = 'test'):
         model.train()
         return {'correlation': tot_correlation, 'per_TF_corr': per_TF_corr, 'loss': mse_loss, 'masked_loss': masked_loss}
 
-def train_model(model, dataset, cell_line, hyper_params, output_directory, verbose = True, reset_epoch = 200, time_limit = 12:00:00):
+def train_model(model, dataset, cell_line, hyper_params, output_directory, verbose = True, reset_epoch = 200, time_limit = 12):
     """ Trains model on training dataset """
     
     device = model.device
@@ -124,6 +125,7 @@ def train_model(model, dataset, cell_line, hyper_params, output_directory, verbo
 
             # backpropagation and optimizing
             total_loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
 
             # store
@@ -133,7 +135,7 @@ def train_model(model, dataset, cell_line, hyper_params, output_directory, verbo
 
         stats = utils.update_progress(stats, iter = e, loss = cur_loss, eig = cur_eig, corr = cur_corr, learning_rate = cur_lr,
                                      n_sign_mismatches = model.signaling_network.count_sign_mismatch())
-
+        
         # every 10 iterations, run test model and store results 
         if e % 10 == 0 or e == hyper_params['max_iter'] - 1:
             result_dict = test_model(model, test_loader, hyper_params)
@@ -151,7 +153,12 @@ def train_model(model, dataset, cell_line, hyper_params, output_directory, verbo
         if np.logical_and(e % reset_epoch == 0, e > 0):
             optimizer.state = reset_state.copy()
 
-
+        # check the time and save output if running out of time
+        if time.time() - start_time > 60*60*(time_limit - 0.25):
+            f = open(f"{output_directory}/stats_dict.pkl",  "wb")
+            pickle.dump(stats,f)
+            f.close()
+            
     return model, cur_loss, cur_eig, cur_corr, stats
 
 def run_model(cell_line, output_directory_path):
@@ -173,6 +180,15 @@ def run_model(cell_line, output_directory_path):
     # building the dataset     
     dataset = bionetwork.TF_Data(filtTF, metadata, chem_fingerprints)
 
+    # filtering network
+    def create_network_info(raw_network_df):
+        network = raw_network_df[['source', 'target', 'stimulation', 'inhibition']]
+        mode_of_action = [1.0 if row['stimulation'] == 1 else -1.0 if row['inhibition'] == 1 else 0.1 for _, row in raw_network_df.iterrows()]
+        network['mode_of_action'] = mode_of_action
+        return network
+
+    network = create_network_info(raw_network)
+    
     # linear scaling of inputs/outputs
     projection_amplitude_in = 3
     projection_amplitude_out = 1.2
@@ -184,7 +200,7 @@ def run_model(cell_line, output_directory_path):
     crossattn_params = {'embedding_dim':1024, 'kqv_dim': 64, 'layers_to_output': [64, 16, 4, 1]} # create drug module for model
     
     # training parameters
-    lr_params = {'max_iter': 100,
+    lr_params = {'max_iter': 5000,
                 'learning_rate': 2e-3}
     other_params = {'batch_size': 8, 'noise_level': 10, 'gradient_noise_level': 1e-9}
     regularization_params = {'param_lambda_L2': 1e-6, 'moa_lambda_L1': 0.1, 'ligand_lambda_L2': 1e-5, 'uniform_lambda_L2': 1e-4,
@@ -208,4 +224,8 @@ def run_model(cell_line, output_directory_path):
 
     model, cur_loss, cur_eig, cur_corr, stats = train_model(model, dataset, cell_line, hyper_params, output_directory_path)
 
-    
+def main():
+    run_model('VCAP', '/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/VCAP_res')
+
+if __name__ = "__main__":
+    main()
