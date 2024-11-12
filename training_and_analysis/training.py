@@ -15,6 +15,7 @@ import bionetwork as bionetwork
 import utilities as utils
 import plotting, io
 
+import time
 
 def test_model(model, test_dataloader, hyper_params, split = 'test'):
     """ Tests the models on test dataset and stores outputs. """
@@ -49,11 +50,12 @@ def test_model(model, test_dataloader, hyper_params, split = 'test'):
         model.train()
         return {'correlation': tot_correlation, 'per_TF_corr': per_TF_corr, 'loss': mse_loss, 'masked_loss': masked_loss}
 
-def train_model(model, dataset, cell_line, hyper_params, verbose = True, reset_epoch = 200, ):
+def train_model(model, dataset, cell_line, hyper_params, output_directory, verbose = True, reset_epoch = 200, time_limit = 12:00:00):
     """ Trains model on training dataset """
     
     device = model.device
     dtype = model.dtype
+    start_time = time.time()
 
     model.to(device)
 
@@ -138,9 +140,12 @@ def train_model(model, dataset, cell_line, hyper_params, verbose = True, reset_e
             stats = utils.update_test_progress(stats, iter = e, loss = result_dict['loss'], corr = result_dict['correlation'],
                                               per_TF_corr = result_dict['per_TF_corr'])
 
-        # print stats every 250 iterations
+        # print stats and save model every 250 iterations
         if verbose and e % 250 == 0:
             utils.print_stats(stats, iter = e)
+
+            if e > 0:
+                torch.save(model.state_dict(), f'{output_directory}/model_epoch_{e}')
 
         # reset optimizer
         if np.logical_and(e % reset_epoch == 0, e > 0):
@@ -148,3 +153,59 @@ def train_model(model, dataset, cell_line, hyper_params, verbose = True, reset_e
 
 
     return model, cur_loss, cur_eig, cur_corr, stats
+
+def run_model(cell_line, output_directory_path):
+    """Given a specific cell_line, runs a model trained on data from that cell_line. Output directory path denotes existing folder to output the results. """
+
+    # loading in necessary data 
+    raw_network = pd.read_csv('/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/data/network_data/network_info_from_nikos.tsv', sep ='\t', index_col=False)
+    chem_fingerprints = h5py.File('/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/data/ml_data/ecfp4.h5')
+    protein_embeddings = h5py.File('/nobackup/users/jefferyl/LauffenLab/ic_50/data/per-residue.h5')
+    metadata = pd.read_csv('/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/data/ml_data/metadata.csv', index_col=0)
+    TF_output = pd.read_csv('/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/data/raw_data/all_TF_data.tsv', sep = '\t', index_col=0)
+    filtTF = TF_output.loc[TF_output.index.isin(metadata.index)]
+    known_drug_targets = pd.read_csv('/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/data/raw_data/drug_target_info.tsv', sep = '\t')
+    known_drug_targets = known_drug_targets.rename(columns={'Unnamed: 0': 'drug'})
+    drug_attn_proteins = pd.read_csv('/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/data/network_data/protein_targets.csv')
+    protein_list = drug_attn_proteins['protein']
+    device = 'cuda'
+
+    # building the dataset     
+    dataset = bionetwork.TF_Data(filtTF, metadata, chem_fingerprints)
+
+    # linear scaling of inputs/outputs
+    projection_amplitude_in = 3
+    projection_amplitude_out = 1.2
+    
+    # bionet parameters
+    bionet_params = {'target_steps': 100, 'max_steps': 150, 'exp_factor':50, 'tolerance': 1e-5, 'leak':1e-2} # fed directly to model
+    
+    # cross_attn parameters
+    crossattn_params = {'embedding_dim':1024, 'kqv_dim': 64, 'layers_to_output': [64, 16, 4, 1]} # create drug module for model
+    
+    # training parameters
+    lr_params = {'max_iter': 100,
+                'learning_rate': 2e-3}
+    other_params = {'batch_size': 8, 'noise_level': 10, 'gradient_noise_level': 1e-9}
+    regularization_params = {'param_lambda_L2': 1e-6, 'moa_lambda_L1': 0.1, 'ligand_lambda_L2': 1e-5, 'uniform_lambda_L2': 1e-4,
+                    'uniform_max': 1/projection_amplitude_out, 'spectral_loss_factor': 1e-5, 'off_target_lambda': 0.01}
+    spectral_radius_params = {'n_probes_spectral': 5, 'power_steps_spectral': 50, 'subset_n_spectral': 10}
+    hyper_params = {**lr_params, **other_params, **regularization_params, **spectral_radius_params, 'target_spectral_radius':0.8}
+
+    # loading in the model
+    model = bionetwork.SignalingModel(net = network,
+                                  metadata = metadata,
+                                  chem_fingerprints = chem_fingerprints,
+                                  y_out = filtTF,
+                                  drugattn_params = crossattn_params,
+                                  protein_list = protein_list,
+                                  protein_embeddings = protein_embeddings,
+                                  known_drug_targets = known_drug_targets,
+                                  projection_amplitude_in = projection_amplitude_in,
+                                  projection_amplitude_out = projection_amplitude_out,
+                                  bionet_params = bionet_params,
+                                  device = 'cuda')
+
+    model, cur_loss, cur_eig, cur_corr, stats = train_model(model, dataset, cell_line, hyper_params, output_directory_path)
+
+    
