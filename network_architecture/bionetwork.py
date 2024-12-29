@@ -153,24 +153,31 @@ class TF_Data(data.Dataset):
         self.output = random.shuffle(self.output)
 
 
-# building the cross-attention network 
+# building the cross-attention based "drug binding" network 
 class SingleAttentionHead(nn.Module):
 
-    """ Builds an attention head that uses tensor contraction as the multiplication. See forward for more details. """
+    """ Builds an attention head that uses batch matrix multiplication to get output binding context vector. In essence,
+    we are asking the question: Given a specific drug embedding and a designated protein space, which amino acids of each protein 
+    should we pay attention to in chemical binding? Returns an output vector that represents our learned interaction
+    between drugs and proteins. """
     
     def __init__(self, embedding_dimension, key_query_dim, value_output_dim, device, attn_dropout = 0.0):
         """ Initializes linear layer matrices of specific size respresenting the key, query, and value matrices. """
         
         super().__init__()
+
+        # saving input parameters
         self.device = device
         self.in_dim = embedding_dimension
         self.kq_dim = key_query_dim
         self.out_dim = value_output_dim
 
+        # initializing key, query, and value matrices for attention
         self.W_query = nn.Linear(self.in_dim, self.kq_dim, bias = False)
         self.W_key = nn.Linear(self.in_dim, self.kq_dim, bias = False)
         self.W_value = nn.Linear(self.in_dim, self.out_dim, bias = False)
 
+        ## can normalize the weights of the key, query, and value matrices
         # nn.init.normal_(self.W_query.weight, std=np.sqrt(2 / (self.in_dim + self.kq_dim)))
         # nn.init.normal_(self.W_key.weight, std=np.sqrt(2 / (self.in_dim+ self.kq_dim)))
 
@@ -178,37 +185,41 @@ class SingleAttentionHead(nn.Module):
 
     def forward(self, queries, keys, values, mask = None):
 
-        """ Creates the context matrix using tensor contraction. Queries, keys, and values represent the object that from the query, key, and value. 
-        For example, our case would involve using the drug embeddings as queries and the protein 3D tesnor as key/value. """
+        """ Creates the context matrix using tensor contraction. The inputs of the queries, keys, and values 
+        should be the tensors that we want to act as query, key, or value. For example, drug embeddings act as the 
+        query to which protein embeddings act as the key/value. In essence, we are asking what parts of the protein 
+        to pay attention to based on the presence of different bits in our drug ECFP4 fingerprint embedding. """
 
         # calculating the query, key, and value tensors
-        q = self.W_query(queries) # [batch, 64]
-        v = self.W_value(values) # [num proteins, L, 64]
-        k = self.W_key(keys) # [num proteins, L, 64]
+        q = self.W_query(queries) # example dimension: [batch, 64]
+        v = self.W_value(values) # example dimension: [num proteins, length (L), 64]
+        k = self.W_key(keys) # example_dimension: [num proteins, L, 64]
 
-        # calculating the attention: batch matrix multiplying the query matrix by every L x 64 matrix for each protein
+        ## calculating the attention: batch matrix multiplying the query matrix by every L x 64 matrix for each protein
+        ## "simulating" binding for the drug to every protein in our protein space
 
-            # repeating q into [num proteins, batch, 64]
+        # repeating queries into [num proteins, batch, 64]
         q_repeated = q.unsqueeze(dim = 0)
         n = k.size()[0]
         q_repeated = q_repeated.expand(n, -1, -1)
 
-            # bmm calculation (every matrix of q x every matrix of k along the num proteins dimension)
-        attn = torch.bmm(q_repeated, k.transpose(1, 2)) # returns [num proteins, batch, L]
+        # bmm calculation (every matrix of q x every matrix of k along the num proteins dimension)
+        attn = torch.bmm(q_repeated, k.transpose(1, 2)) # returns example dimension of [num proteins, batch, L]
 
-            # dividing by the square root of key dimension
+        # dividing by the square root of key dimension
         attn /= np.sqrt(k.shape[-1])
 
-            # softmaxing over the L dimension - we want to pay attention along the amino acid dimension
+        # softmaxing over the L dimension - we want to pay attention along the amino acid dimension (which amino acids are important in binding)
         attn = torch.softmax(attn, dim = -1)
         attn = self.attn_dropout(attn)
 
-        # calculating the context vector: for every drug/batch sample, for every protein, multiply the 1 x L vector by the
-        # corresponding protein matrix to get a context 1 x 64 vector representing the binding of the drug to that specific protein
+        ## calculating the context vector: for every drug/batch sample, for every protein, multiply the 1 x L vector by the
+        ## corresponding protein matrix to get a context 1 x 64 vector representing the binding of the drug to that specific protein
         num = attn.size()[0]
         batch = attn.size()[1]
         length = attn.size()[2]
 
+        # building empty tensor to store data
         result = torch.empty(batch, num, 64, device=self.device)
         
         for i in range(batch):
@@ -224,7 +235,8 @@ class SingleAttentionHead(nn.Module):
         return result
 
 class TrainableLogistic(nn.Module):
-    """ Builds a trainable generalized logistic function that determines the scaling of the dose on the drug pertubation effect before the LEMBAS module. """
+    """ Builds a trainable generalized logistic function that determines the scaling of the dose on the 
+    drug pertubation effect before the LEMBAS module. """
     
     def __init__(self):
         """ Initializes instance of Trainable Logistic with trainable parameters """
@@ -269,7 +281,7 @@ class DrugAttnModule(nn.Module):
         self.device = torch.device(device)
         self.cross_attn = SingleAttentionHead(embedding_dim, key_query_value_dim, key_query_value_dim, self.device, attn_dropout=0.1)
 
-        # builds linear layers from context vector to binidng scalar 
+        # builds linear layers from context vector to binding scalar 
         self.layers = torch.nn.ModuleList()
         for i in range(0, len(layers_to_output) -1):
             self.layers.append(torch.nn.Linear(layers_to_output[i], layers_to_output[i + 1], bias=True))
