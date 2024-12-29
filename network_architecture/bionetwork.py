@@ -760,26 +760,49 @@ class BioNet(nn.Module):
         """
         spectral_loss_factor = torch.tensor(spectral_loss_factor, dtype=Y_full.dtype, device=Y_full.device)
         exp_factor = torch.tensor(self.training_params['exp_factor'], dtype=Y_full.dtype, device=Y_full.device)
-
+    
         if self.seed:
             np.random.seed(self.seed + self._ss_seed_counter)
         selected_values = np.random.permutation(Y_full.shape[0])[:subset_n]
-
-        SS_deviation, aprox_spectral_radius = self._get_SS_deviation(Y_full[selected_values,:], **kwargs)
+    
+        SS_deviation, aprox_spectral_radius = self._get_SS_deviation(Y_full[selected_values,:], **kwargs)        
         spectral_radius_factor = torch.exp(exp_factor*(aprox_spectral_radius-self.training_params['spectral_target']))
-
+        
         loss = spectral_radius_factor * SS_deviation/torch.sum(SS_deviation.detach())
         loss = spectral_loss_factor * torch.sum(loss)
         aprox_spectral_radius = torch.mean(aprox_spectral_radius).item()
-
+    
         self._ss_seed_counter += 1 # new seed each time this (and _get_SS_deviation) is called
-
+    
         return loss, aprox_spectral_radius
-
-    def _get_SS_deviation(self, Y_full_sub, n_probes: int = 5, power_steps: int = 50):
-        x_prime = self.onestepdelta_activation_factor(Y_full_sub, self.training_params['leak'])
+    
+    def _get_SS_deviation(self, Y_full_sub, n_probes: int = 5, power_steps: int = 5):
+        """Quicker version of spectral radius implemented by Olof Nordenstorm."""
+        x_prime = self.onestepdelta_activation_factor(Y_full_sub, self.training_params['leak'])     
         x_prime = x_prime.unsqueeze(2)
+        
+        T = x_prime * self.weights
+        if self.seed:
+            set_seeds(self.seed + self._ss_seed_counter)
+        delta = torch.randn((Y_full_sub.shape[0], Y_full_sub.shape[1], n_probes), dtype=Y_full_sub.dtype, device=Y_full_sub.device)
+        for i in range(power_steps):
+            new = delta / torch.norm(delta,dim=1).unsqueeze(1)
+            delta = torch.matmul(T, new)
 
+        new_delta = torch.matmul(T, delta)
+        batch_eigen_not_norm=torch.einsum('ijk,ijk->ik',new_delta,delta)
+        normalize=torch.einsum('ijk,ijk->ik',delta,delta)
+        batch_SR_values,_=torch.max(torch.abs(batch_eigen_not_norm/normalize),axis=1) # spectral radius approx 
+
+        aprox_spectral_radius = torch.mean(batch_SR_values, axis=0)      
+        SS_deviation = batch_SR_values
+    
+        return SS_deviation, aprox_spectral_radius
+    
+    def _depr_get_SS_deviation(self, Y_full_sub, n_probes: int = 5, power_steps: int = 50):
+        x_prime = self.onestepdelta_activation_factor(Y_full_sub, self.training_params['leak'])     
+        x_prime = x_prime.unsqueeze(2)
+        
         T = x_prime * self.weights
         if self.seed:
             set_seeds(self.seed + self._ss_seed_counter)
@@ -787,13 +810,13 @@ class BioNet(nn.Module):
         for i in range(power_steps):
             new = delta
             delta = torch.matmul(T, new)
-
+    
         SS_deviation = torch.max(torch.abs(delta), axis=1)[0]
         aprox_spectral_radius = torch.mean(torch.exp(torch.log(SS_deviation)/power_steps), axis=1)
-
+        
         SS_deviation = torch.sum(torch.abs(delta), axis=1)
         SS_deviation = torch.mean(torch.exp(torch.log(SS_deviation)/power_steps), axis=1)
-
+    
         return SS_deviation, aprox_spectral_radius
 
 class ProjectOutput(nn.Module):
