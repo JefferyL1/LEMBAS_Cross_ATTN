@@ -125,7 +125,7 @@ def train_model(model, dataset, cell_line, hyper_params, output_directory, verbo
 
             # backpropagation and optimizing
             total_loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
 
             # store
