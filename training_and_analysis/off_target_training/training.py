@@ -227,5 +227,5 @@ def run_model(cell_line, output_directory_path):
 def main():
     run_model('VCAP', '/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/VCAP_res')
 
-if __name__ = "__main__":
+if __name__ == "__main__":
     main()
