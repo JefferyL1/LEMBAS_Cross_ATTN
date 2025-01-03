@@ -84,9 +84,9 @@ def train_model(model, dataset, cell_line, hyper_params, output_directory, verbo
     for e in range(hyper_params['max_iter']):
 
         # learning rate
-        cur_lr = utils.get_lr(e, hyper_params['max_iter'], max_height = hyper_params['learning_rate'],
+        cur_lr = utils.get_lr_new(e, hyper_params['max_iter'], max_height = hyper_params['learning_rate'],
                             start_height = hyper_params['learning_rate']/10, end_height = 1e-6,
-                            peak = 1000)
+                            peak = 300)
         optimizer.param_groups[0]['lr'] = cur_lr
 
         cur_loss = []
@@ -200,7 +200,7 @@ def run_model(cell_line, output_directory_path):
     crossattn_params = {'embedding_dim':1024, 'kqv_dim': 64, 'layers_to_output': [64, 16, 4, 1]} # create drug module for model
     
     # training parameters (reduced learning rate)
-    lr_params = {'max_iter': 5000,
+    lr_params = {'max_iter': 1000,
                 'learning_rate': 1e-4}
     other_params = {'batch_size': 8, 'noise_level': 10, 'gradient_noise_level': 1e-9}
     regularization_params = {'param_lambda_L2': 1e-6, 'moa_lambda_L1': 0.1, 'ligand_lambda_L2': 1e-5, 'uniform_lambda_L2': 1e-4,
