@@ -225,7 +225,7 @@ def run_model(cell_line, output_directory_path):
     model, cur_loss, cur_eig, cur_corr, stats = train_model(model, dataset, cell_line, hyper_params, output_directory_path)
 
 def main():
-    run_model('VCAP', '/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/VCAP_res')
+    run_model('VCAP', '/nobackup/users/jefferyl/LauffenLab/LEMBAS_w_attn/VCAP_res_new')
 
 if __name__ == "__main__":
     main()
