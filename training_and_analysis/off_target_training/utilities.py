@@ -35,9 +35,9 @@ def set_cores(n_cores: int):
     os.environ["VECLIB_MAXIMUM_THREADS"] = str(n_cores)
     os.environ["NUMEXPR_NUM_THREADS"] = str(n_cores)
 
-def get_lr_new(iter:int, max_iter: int, max_height: float = 1e-4,
+def get_lr_new(iter:int, max_iter: int = 1000, max_height: float = 1e-4,
            start_height: float = 1e-5, end_height: float = 1e-5,
-           peak: int = 1000):
+           peak: int = 200):
 
     """ Calculates learning rate for a given iteration during training using linear
     warmup and cosine scheduler.
