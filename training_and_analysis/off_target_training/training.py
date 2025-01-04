@@ -68,7 +68,7 @@ def train_model(model, dataset, cell_line, hyper_params, output_directory, verbo
 
     # defining loss and optimizer
     loss = torch.nn.MSELoss(reduction = 'mean')
-    optimizer = torch.optim.Adam(model.parameters(), lr = 1, weight_decay=0)
+    optimizer = torch.optim.Adam(model.parameters(), lr = 1, weight_decay=0, eps = 10e-4)
     reset_state = optimizer.state.copy()
 
     # getting specific dataset of cell line and train split
