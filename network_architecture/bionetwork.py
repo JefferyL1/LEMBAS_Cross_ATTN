@@ -294,8 +294,10 @@ class DrugAttnModule(nn.Module):
 
         # making 3D protein tensor 
         self.n = len(protein_names)
-        self.protein, self.protein_ind_dict = self.create_protein_reference(protein_names, protein_file)
-
+        self.protein, self.protein_ind_dict, self.protein_len_dict = self.create_protein_reference(protein_names, protein_file)
+        self.max_L = protein_object.shape[0] # find what dimension the length is across
+        self.protein_mask_dict = self.create_protein_mask(self)
+        
         # masking for known targets 
         melted_targets = pd.melt(known_targets_file, id_vars = 'drug', var_name='protein', value_name='activity')
         melted_targets = melted_targets[melted_targets['activity'] == 1]
@@ -304,21 +306,35 @@ class DrugAttnModule(nn.Module):
         self.mask_dict = self.make_target_masks(self.known_targets)
 
     def create_protein_reference(self, protein_names, protein_file):
-        """ Creates the 3d tensor of proteins to find 'binding' to. Returns this along with dictionary of protein name to index in 3d tensor. """
+        """ Creates the 3d tensor of proteins to find 'binding' to. Returns this along with dictionaries of protein name to index in 3d tensor
+        and protein names to length."""
         
         protein_embeds = []
-        ind_prot_dict = {}
+        protein_ind_dict = {}
+        protein_len_dict = {}
 
         for ind, protein in enumerate(protein_names):
             protein_embeds.append(torch.from_numpy(protein_file[protein][:]))
-            ind_prot_dict[protein] = ind
+            protein_ind_dict[protein] = ind 
+            protein_len_dict[protein] = protein_file[protein][:].shape[0] # figure out which dimension is the num of residues
 
         # pads all proteins to maximum length to ensure rectangular tensor 
         protein_object = torch.nn.utils.rnn.pad_sequence(protein_embeds, batch_first = True, padding_value = 0)
         protein_object = protein_object.to(device = self.device, dtype= self.dtype)
 
-        return protein_object, ind_prot_dict
+        return protein_object, protein_ind_dict, protein_len_dict
 
+    def create_protein_masks(self):
+        """ Creates a dictionary mapping protein names to their respective attn mask"""
+        protein_mask = {}
+        ind_list = [i for i in range(self.max_L)]
+        for key, length in protein_len_dict.items:
+            mask = torch.zeros(self.n, device = self.device, dtype = self.dtype)
+            mask[ind_list[length+1:]] = 1
+            protein_mask[self.protein_ind_dict[key]] = mask
+
+        return protein_mask
+        
     def forward(self, drug, dose):
         """ Given specific drug and drug, returns the Xin context vector as well as the masked loss. """
         drug, dose = drug.to(dtype = self.dtype), dose.to(dtype = self.dtype)
@@ -388,6 +404,17 @@ class DrugAttnModule(nn.Module):
         for i in range(drug_batch_tensor.size()[0]):
             loss += self.calculate_masked_loss(drug_batch_tensor[i, :], Xin_batched_tensor[i, :], lambda_mask)
         return loss
+
+    def get_attn_mask(self, protein_index):
+        """ Given a protein, returns a specific mask vector for that protein (with dimension of max-length of protein object)
+        in which a 1 represents a padded value while 0 represents actual residues) """
+
+        return self.protein_mask_dict[protein_index]
+
+    def calculate_attn_masked_loss(self, attn_vector, protein_index, lambda_attn_mask):
+
+        mask = self.get_attn_mask(protein_index)
+        return lambda_attn_mask * torch.sum(mask * attn_vector)
 
 class ProjectInput(nn.Module):
     """Generate all nodes for the signaling network and linearly scale input ligand values by NN parameters."""
