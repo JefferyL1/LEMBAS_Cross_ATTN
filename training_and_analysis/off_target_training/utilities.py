@@ -103,7 +103,7 @@ def get_lr_linear_cos(iter:int, max_iter: int = 1000, max_height: float = 1e-4,
         x = iter - peak
         period = max_iter - peak
         cos_value = 1 + math.cos((math.pi*x)/period)
-        return (max_height - end_height)/2 * cos_value + end_height
+        return (max_height - end_height)/2 * cos_value + max_height
 
 
 
