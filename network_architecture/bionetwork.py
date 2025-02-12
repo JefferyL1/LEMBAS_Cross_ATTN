@@ -295,8 +295,8 @@ class DrugAttnModule(nn.Module):
         # making 3D protein tensor 
         self.n = len(protein_names)
         self.protein, self.protein_ind_dict, self.protein_len_dict = self.create_protein_reference(protein_names, protein_file)
-        self.max_L = protein_object.shape[0] # find what dimension the length is across
-        self.protein_mask_dict = self.create_protein_mask(self)
+        self.max_L = self.protein.shape[1] # find what dimension the length is across
+        self.protein_mask_dict = self.create_protein_masks()
         
         # masking for known targets 
         melted_targets = pd.melt(known_targets_file, id_vars = 'drug', var_name='protein', value_name='activity')
@@ -331,9 +331,9 @@ class DrugAttnModule(nn.Module):
         """ Creates a dictionary mapping protein names to their respective attn mask"""
         protein_mask = {}
         ind_list = [i for i in range(self.max_L)]
-        for key, length in protein_len_dict.items:
+        for key, length in self.protein_len_dict.items():
             mask = torch.zeros(self.n, device = self.device, dtype = self.dtype)
-            mask[ind_list[length+1:]] = 1
+            mask[ind_list[length:]] = 1
             protein_mask[self.protein_ind_dict[key]] = mask
 
         return protein_mask
@@ -419,8 +419,8 @@ class DrugAttnModule(nn.Module):
         
         mat = torch.empty((self.n, self.max_L), device=self.device)
         
-        for i in range(num_proteins):
-            mat[i] = get_attn_mask(i)
+        for i in range(self.n):
+            mat[i] = self.get_attn_mask(i)
 
         return mat 
         
