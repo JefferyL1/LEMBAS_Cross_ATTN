@@ -218,7 +218,7 @@ class SingleAttentionHead(nn.Module):
         num = attn.size()[0]
         batch = attn.size()[1]
         length = attn.size()[2]
-
+                                                                                                                                      
         # building empty tensor to store data
         result = torch.empty(batch, num, 64, device=self.device)
         
@@ -232,7 +232,7 @@ class SingleAttentionHead(nn.Module):
             
             result[i, :, :] = context.squeeze(dim = 1)
 
-        return result
+        return result, attn
 
 class TrainableLogistic(nn.Module):
     """ Builds a trainable generalized logistic function that determines the scaling of the dose on the 
@@ -316,7 +316,7 @@ class DrugAttnModule(nn.Module):
         for ind, protein in enumerate(protein_names):
             protein_embeds.append(torch.from_numpy(protein_file[protein][:]))
             protein_ind_dict[protein] = ind 
-            protein_len_dict[protein] = protein_file[protein][:].shape[0] # figure out which dimension is the num of residues
+            protein_len_dict[protein] = protein_file[protein][:].shape[0] # 0 dimension is the length of the protein
 
         # pads all proteins to maximum length to ensure rectangular tensor 
         protein_object = torch.nn.utils.rnn.pad_sequence(protein_embeds, batch_first = True, padding_value = 0)
@@ -339,7 +339,7 @@ class DrugAttnModule(nn.Module):
         """ Given specific drug and drug, returns the Xin context vector as well as the masked loss. """
         drug, dose = drug.to(dtype = self.dtype), dose.to(dtype = self.dtype)
 
-        context = self.cross_attn(drug, self.protein, self.protein)
+        context, attn = self.cross_attn(drug, self.protein, self.protein)
 
         for layer_ind, layer in enumerate(self.layers):
             context = layer(context)
@@ -352,7 +352,7 @@ class DrugAttnModule(nn.Module):
             else:
                 context = self.act_fn(context)
 
-        return torch.matmul(torch.diag(self.trainable_dose(dose)), context.squeeze(dim = -1))
+        return torch.matmul(torch.diag(self.trainable_dose(dose)), context.squeeze(dim = -1)), attn
 
     def L2_reg(self, lambda_L2: Annotated[float, Ge(0)] = 0):
         """Get the L2 regularization term for the neural network parameters.
