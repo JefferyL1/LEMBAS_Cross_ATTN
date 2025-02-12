@@ -100,7 +100,7 @@ def train_model(model, dataset, cell_line, hyper_params, output_directory, verbo
             drug, dose, TF_output = drug.to(device), dose.to(device), TF_output.to(device)
 
             # model pass
-            X_in = model.drug_layer(drug, dose) # gets signaling output from attn module
+            X_in, attn = model.drug_layer(drug, dose) # gets signaling output from attn module
             X_full = model.input_layer(X_in) # project to bionetwork space
             network_noise = torch.randn(X_full.shape, device = X_full.device)
             X_full = X_full + (hyper_params['noise_level'] * cur_lr * network_noise)
