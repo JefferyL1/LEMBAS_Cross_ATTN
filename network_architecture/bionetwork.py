@@ -305,6 +305,9 @@ class DrugAttnModule(nn.Module):
         self.known_targets = {tuple(ecfp4[drug]): targets for drug, targets in targets_dictionary.items()}
         self.mask_dict = self.make_target_masks(self.known_targets)
 
+        # masking for attn to non-existent residues
+        attn_mask = self.make_attn_mask_tensor()
+
     def create_protein_reference(self, protein_names, protein_file):
         """ Creates the 3d tensor of proteins to find 'binding' to. Returns this along with dictionaries of protein name to index in 3d tensor
         and protein names to length."""
@@ -411,10 +414,23 @@ class DrugAttnModule(nn.Module):
 
         return self.protein_mask_dict[protein_index]
 
-    def calculate_attn_masked_loss(self, attn_vector, protein_index, lambda_attn_mask):
+    def make_attn_mask_tensor(self):
+        """ Creates a single matrix of dimensions [num_proteins, max_length] for which each row is the attn mask for the protein at that specific index """
+        
+        mat = torch.empty((self.n, self.max_L), device=self.device)
+        
+        for i in range(num_proteins):
+            mat[i] = get_attn_mask(i)
 
-        mask = self.get_attn_mask(protein_index)
-        return lambda_attn_mask * torch.sum(mask * attn_vector)
+        return mat 
+        
+    def calculate_attn_masked_loss(self, attn_batched_input, lambda_attn):
+        """ Calculates the loss (the amount of attention paid to non-existent residues) by calculating the Hadamard product between
+        broadcasted attention-mask and my actual attention output. """
+
+        batch_size = attn_batched_input.shape[1]
+
+        return lambda_attn * torch.sum(self.mask.unsqueeze(1).repeat(1,batch_size,1) * attn_batched_input)
 
 class ProjectInput(nn.Module):
     """Generate all nodes for the signaling network and linearly scale input ligand values by NN parameters."""
