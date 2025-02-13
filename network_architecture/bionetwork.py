@@ -430,7 +430,7 @@ class DrugAttnModule(nn.Module):
 
         batch_size = attn_batched_input.shape[1]
 
-        return lambda_attn * torch.sum(self.mask.unsqueeze(1).repeat(1,batch_size,1) * attn_batched_input)
+        return lambda_attn * torch.sum(self.attn_mask.unsqueeze(1).repeat(1,batch_size,1) * attn_batched_input)
 
 class ProjectInput(nn.Module):
     """Generate all nodes for the signaling network and linearly scale input ligand values by NN parameters."""
