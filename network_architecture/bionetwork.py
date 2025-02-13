@@ -306,7 +306,7 @@ class DrugAttnModule(nn.Module):
         self.mask_dict = self.make_target_masks(self.known_targets)
 
         # masking for attn to non-existent residues
-        attn_mask = self.make_attn_mask_tensor()
+        self.attn_mask = self.make_attn_mask_tensor()
 
     def create_protein_reference(self, protein_names, protein_file):
         """ Creates the 3d tensor of proteins to find 'binding' to. Returns this along with dictionaries of protein name to index in 3d tensor
@@ -332,7 +332,7 @@ class DrugAttnModule(nn.Module):
         protein_mask = {}
         ind_list = [i for i in range(self.max_L)]
         for key, length in self.protein_len_dict.items():
-            mask = torch.zeros(self.n, device = self.device, dtype = self.dtype)
+            mask = torch.zeros(self.max_L, device = self.device, dtype = self.dtype)
             mask[ind_list[length:]] = 1
             protein_mask[self.protein_ind_dict[key]] = mask
 
