@@ -259,7 +259,7 @@ class DrugAttnModule(nn.Module):
     """ Given a single drug as an ECFP4 fingerprint, returns a ligand-like output representing the drugs binding / interaction on each protein of the
     protein space """
 
-    def __init__(self, embedding_dim, key_query_value_dim, layers_to_output, protein_names, protein_file, known_targets_file, ecfp4, dtype = torch.float32, device = 'cuda'):
+    def __init__(self, embedding_dim, key_query_value_dim, layers_to_output, protein_names, protein_file, known_targets_file, ecfp4, batch_size = 8, dtype = torch.float32, device = 'cuda'):
         """ 
         
         Initializes an instance of this neural network module.
@@ -306,8 +306,9 @@ class DrugAttnModule(nn.Module):
         self.mask_dict = self.make_target_masks(self.known_targets)
 
         # masking for attn to non-existent residues
-        self.attn_mask = self.make_attn_mask_tensor()
-
+        self.batched_attn_mask, self.attn_mask  = self.make_attn_mask_tensor(batch_size)
+        self.batch_size = batch_size
+        
     def create_protein_reference(self, protein_names, protein_file):
         """ Creates the 3d tensor of proteins to find 'binding' to. Returns this along with dictionaries of protein name to index in 3d tensor
         and protein names to length."""
@@ -414,7 +415,7 @@ class DrugAttnModule(nn.Module):
 
         return self.protein_mask_dict[protein_index]
 
-    def make_attn_mask_tensor(self):
+    def make_attn_mask_tensor(self, batch_size):
         """ Creates a single matrix of dimensions [num_proteins, max_length] for which each row is the attn mask for the protein at that specific index """
         
         mat = torch.empty((self.n, self.max_L), device=self.device)
@@ -422,7 +423,7 @@ class DrugAttnModule(nn.Module):
         for i in range(self.n):
             mat[i] = self.get_attn_mask(i)
 
-        return mat 
+        return mat.unsqueeze(1).repeat(1, batch_size, 1), mat 
         
     def calculate_attn_masked_loss(self, attn_batched_input, lambda_attn):
         """ Calculates the loss (the amount of attention paid to non-existent residues) by calculating the Hadamard product between
@@ -430,7 +431,10 @@ class DrugAttnModule(nn.Module):
 
         batch_size = attn_batched_input.shape[1]
 
-        return lambda_attn * torch.sum(self.attn_mask.unsqueeze(1).repeat(1,batch_size,1) * attn_batched_input)
+        if batch_size == self.batch_size
+            return lambda_attn * torch.sum(self.batched_attn_mask * attn_batched_input)
+        else:
+            return lambda_attn * torch.sum(self.attn_mask.unsqueeze(1).repeat(1, batch_size, 1) * attn_batch_input)
 
 class ProjectInput(nn.Module):
     """Generate all nodes for the signaling network and linearly scale input ligand values by NN parameters."""
