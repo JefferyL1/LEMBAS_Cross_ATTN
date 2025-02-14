@@ -110,6 +110,7 @@ def train_model(model, dataset, cell_line, hyper_params, output_directory, verbo
             # getting loss equation
 
             fit_loss = loss(TF_output, Yhat) # normal loss
+            attn_masked_loss = model.drug_layer.get_batched_mask_loss(attn, hyper_params['attn_mask_lambda'])
             masked_loss = model.drug_layer.get_batched_mask_loss(drug, X_in, hyper_params['off_target_lambda'])
             sign_reg = model.signaling_network.sign_regularization(lambda_L1 = hyper_params['moa_lambda_L1'])
             ligand_reg = model.ligand_regularization(lambda_L2 = hyper_params['ligand_lambda_L2']) # ligand biases
@@ -204,7 +205,7 @@ def run_model(cell_line, output_directory_path):
                 'learning_rate': 1e-4}
     other_params = {'batch_size': 8, 'noise_level': 10, 'gradient_noise_level': 1e-9}
     regularization_params = {'param_lambda_L2': 1e-6, 'moa_lambda_L1': 0.1, 'ligand_lambda_L2': 1e-5, 'uniform_lambda_L2': 1e-4,
-                    'uniform_max': 1/projection_amplitude_out, 'spectral_loss_factor': 1e-5, 'off_target_lambda': 0.01}
+                    'uniform_max': 1/projection_amplitude_out, 'spectral_loss_factor': 1e-5, 'off_target_lambda': 0.01, 'attn_mask_lambda': 0.001}
     spectral_radius_params = {'n_probes_spectral': 5, 'power_steps_spectral': 50, 'subset_n_spectral': 10}
     hyper_params = {**lr_params, **other_params, **regularization_params, **spectral_radius_params, 'target_spectral_radius':0.8}
 
