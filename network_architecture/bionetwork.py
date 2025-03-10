@@ -398,7 +398,7 @@ class DrugAttnModule(nn.Module):
         """ Given an output vector after the forward pass, calculate the loss from off-target predictions"""
 
         mask = self.get_mask(drug.cpu())
-        ones_tensor = torch.ones(len(mask), device = self.device, dtype=bool)
+        ones_tensor = torch.ones(len(mask), device = self.device, dtype=self.dtype)
 
         return lambda_mask * torch.sum((ones_tensor - mask) * Xin)
 
