@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-
+from typing import Dict, List, Union, Annotated
+from annotated_types import Ge
 
 class SingleAttentionHead(nn.Module):
 
@@ -51,7 +52,7 @@ class SingleAttentionHead(nn.Module):
         attn_weights = torch.softmax(attn, dim = -1)
 
         # getting context vector 
-        context = matmul(attn_weights, v) #[batch, 1, 64]
+        context = torch.matmul(attn_weights, v) #[batch, 1, 64]
 
         return context, attn_weights
 
