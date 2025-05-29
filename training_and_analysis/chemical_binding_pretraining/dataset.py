@@ -45,7 +45,10 @@ class TDI_Data(data.Dataset):
 
         # getting train and test split
         self.train, self.test = self.get_train_test_split()
-    
+
+        # getting training data affinity mean 
+        self.mean = self.data.loc[self.train, 'affinity'].mean()
+        
         # building data 
         self.input = []
         self.output = []
@@ -80,7 +83,7 @@ class TDI_Data(data.Dataset):
         drug_set = set(self.data['Drug_SMILES'])
         connected_components = self.get_connected_components(drug_set, self.ecfp4)
         drugs_w_edges = set.union(*connected_components)
-        drugs_wo_edges = set(self.data['Drug_SMILES']) - drugs_w_edges
+        drugs_wo_edges = drug_set - drugs_w_edges
         connected_components.extend([[drug] for drug in drugs_wo_edges])
         
         # components to number of samples
