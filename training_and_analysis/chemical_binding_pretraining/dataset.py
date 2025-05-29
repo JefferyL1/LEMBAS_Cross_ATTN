@@ -1,15 +1,9 @@
 import numpy as np
+import torch.utils.data as data
+import torch
 import networkx as nx
 from itertools import combinations
-import scipy
-import random
-import h5py
-from typing import Dict, List, Union, Annotated
-from annotated_types import Ge
-import torch
-import torch.nn as nn
-import torch.utils.data as data
-import os
+import random 
 
 def get_tanimoto_similarity(fp1, fp2):
     """Calculates tanimoto similarity of two input numpy fingerprints with dtpye = bool."""
