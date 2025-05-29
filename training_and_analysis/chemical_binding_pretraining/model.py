@@ -1,3 +1,7 @@
+import torch
+import torch.nn as nn
+
+
 class SingleAttentionHead(nn.Module):
 
     """ Builds an attention head that uses cross-attention to get context binding vector. In essence,
