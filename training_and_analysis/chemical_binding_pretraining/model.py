@@ -1,6 +1,6 @@
 class SingleAttentionHead(nn.Module):
 
-    """ Builds an attention head that uses batch matrix multiplication to get output binding context vector. In essence,
+    """ Builds an attention head that uses cross-attention to get context binding vector. In essence,
     we are asking the question: Given a specific drug embedding and a designated protein space, which amino acids of each protein 
     should we pay attention to in chemical binding? Returns an output vector that represents our learned interaction
     between drugs and proteins. """
@@ -27,10 +27,7 @@ class SingleAttentionHead(nn.Module):
 
     def forward(self, queries, keys, values, mask = None):
 
-        """ Creates the context matrix using tensor contraction. The inputs of the queries, keys, and values 
-        should be the tensors that we want to act as query, key, or value. For example, drug embeddings act as the 
-        query to which protein embeddings act as the key/value. In essence, we are asking what parts of the protein 
-        to pay attention to based on the presence of different bits in our drug ECFP4 fingerprint embedding. """
+        """ Creates the context matrix. Runs the attention block"""
 
         # calculating the query, key, and value tensors
         q = self.W_query(queries) # example dimension: [batch, 64]
@@ -41,7 +38,7 @@ class SingleAttentionHead(nn.Module):
         ## "simulating" binding for the drug to every protein in our protein space
 
         # attention calculation 
-        attn = torch.matmul(q.unsqueeze(dim = 1), k.transpose(1,2))
+        attn = torch.matmul(q.unsqueeze(dim = 1), k.transpose(1,2)) #[batch, 1, L]
         
         # dividing by the square root of key dimension
         attn /= torch.sqrt(k.shape[-1])
@@ -50,7 +47,7 @@ class SingleAttentionHead(nn.Module):
         attn_weights = torch.softmax(attn, dim = -1)
 
         # getting context vector 
-        context = matmul(attn_weights, v)
+        context = matmul(attn_weights, v) #[batch, 1, 64]
 
         return context, attn_weights
 
@@ -79,7 +76,7 @@ class DrugAttnModule(nn.Module):
         # sets device, dtype, and cross_attn module 
         self.dtype = dtype
         self.device = torch.device(device)
-        self.cross_attn = SingleAttentionHead(embedding_dim, key_query_value_dim, key_query_value_dim, self.device, attn_dropout=0.0)
+        self.cross_attn = SingleAttentionHead(embedding_dim, key_query_value_dim, key_query_value_dim, self.device)
 
         # builds linear layers from context vector to binding scalar 
         self.layers = torch.nn.ModuleList()
@@ -92,10 +89,10 @@ class DrugAttnModule(nn.Module):
         self.dropout = torch.nn.Dropout(0.20)
         
     def forward(self, drug, protein):
-        """ Given specific drug and drug, returns the Xin context vector as well as the masked loss. """
+        """ Given specific drug and protein, returns the binding affinity and attention. """
         drug, protein = drug.to(dtype = self.dtype), protein.to(dtype = self.dtype)
 
-        context, attn = self.cross_attn(drug, self.protein, self.protein)
+        context, attn = self.cross_attn(drug, self.protein, self.protein) #context is [batch, 1, 64]
 
         for layer_ind, layer in enumerate(self.layers):
             context = layer(context)
@@ -106,9 +103,11 @@ class DrugAttnModule(nn.Module):
                 context = self.act_fn(context)
                 context = self.dropout(context)
             else:
-                context = self.act_fn(context)
+                context = self.act_fn(context) 
 
-        return context.squeeze(dim = -1), attn
+        # context is [batch, 1, 1]
+
+        return context.squeeze(dim = (-1, -2)), attn
 
     def L2_reg(self, lambda_L2: Annotated[float, Ge(0)] = 0):
         """Get the L2 regularization term for the neural network parameters.
