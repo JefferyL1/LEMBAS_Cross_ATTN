@@ -9,4 +9,4 @@ output_directory = '/nobackup/users/jefferyl/LauffenLab/pre_train/results/cross_
 
 model = DrugAttnModule(model_params['embedding_dim'], model_params['kqv_dim'], model_params['layers_to_output'])
 
-trai
+model, cur_loss, cur_eig, cur_corr, stats = train_model()
